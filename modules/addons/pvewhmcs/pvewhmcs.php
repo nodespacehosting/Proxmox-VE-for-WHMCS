@@ -1,4 +1,13 @@
 <?php
+/* Proxmox VE for WHMCS
+ * Copyright (c) 2016 Cybercoder
+ * Copyright (c) 2023 The Network Crew
+ * Copyright (c) 2023 NodeSpace Technologies, LLC
+ * @license: GPLv3
+ * Changes:
+ *  - 2023-08-06: Fixed languages and added Proxmox VE 8 CPU options
+*/
+
 use Illuminate\Database\Capsule\Manager as Capsule;
 define( 'pvewhmcs_BASEURL', 'addonmodules.php?module=pvewhmcs' );
 require_once('proxmox.php');
@@ -35,7 +44,7 @@ function pvewhmcs_activate() {
 		$i++ ;
 	}
 	if (!$err)
-		return array('status'=>'success','description'=>'PVE for WHMCS installed successfuly.');
+		return array('status'=>'success','description'=>'PVE for WHMCS installed successfully.');
 
 	return array('status'=>'error','description'=>'PVE for WHMCS was not activated properly.');
 
@@ -44,7 +53,7 @@ function pvewhmcs_activate() {
 function pvewhmcs_deactivate() {
 	Capsule::statement('drop table mod_pvewhmcs_ip_addresses,mod_pvewhmcs_ip_pools,mod_pvewhmcs_plans,mod_pvewhmcs_vms,mod_pvewhmcs');
 		# Return Result
-	return array('status'=>'success','description'=>'PVE for WHMCS successfuly deactivated and all related tables deleted.');
+	return array('status'=>'success','description'=>'PVE for WHMCS successfully deactivated and all related tables deleted.');
 	return array('status'=>'error','description'=>'If an error occurs you can return an error
 		message for display here');
 	return array('status'=>'info','description'=>'If you want to give an info message to a user
@@ -640,6 +649,10 @@ function kvm_plan_edit($id) {
 	<option value="max" ' . ($plan->cpuemu == "max" ? "selected" : "") . '>(QEMU) Max</option>
 	<option value="qemu32" ' . ($plan->cpuemu == "qemu32" ? "selected" : "") . '>(QEMU) qemu32</option>
 	<option value="qemu64" ' . ($plan->cpuemu == "qemu64" ? "selected" : "") . '>(QEMU) qemu64</option>
+	<option value="x86-64-v2" ' . ($plan->cpuemu == "x86-64-v2" ? "selected" : "") . '>(QEMU) x86-64-v2</option>
+	<option value="x86-64-v2-AES" ' . ($plan->cpuemu == "x86-64-v2-AES" ? "selected" : "") . '>(QEMU) x86-64-v2-AES</option>
+	<option value="x86-64-v3" ' . ($plan->cpuemu == "x86-64-v3" ? "selected" : "") . '>(QEMU) x86-64-v3</option>
+	<option value="x86-64-v4" ' . ($plan->cpuemu == "x86-64-v4" ? "selected" : "") . '>(QEMU) x86-64-v4</option>
 	<option value="486" ' . ($plan->cpuemu == "486" ? "selected" : "") . '>(Intel) 486</option>
 	<option value="Broadwell" ' . ($plan->cpuemu == "Broadwell" ? "selected" : "") . '>(Intel) Broadwell</option>
 	<option value="Broadwell-IBRS" ' . ($plan->cpuemu == "Broadwell-IBRS" ? "selected" : "") . '>(Intel) Broadwell-IBRS</option>
@@ -689,7 +702,7 @@ function kvm_plan_edit($id) {
 	<option value="Opteron_G4" ' . ($plan->cpuemu == "Opteron_G4" ? "selected" : "") . '>(AMD) Opteron_G4</option>
 	<option value="Opteron_G5" ' . ($plan->cpuemu == "Opteron_G5" ? "selected" : "") . '>(AMD) Opteron_G5</option>
 	</select>
-	CPU emulation type. Default is KVM64
+	CPU emulation type. Default is KVM64 on Proxmox VE < 7.x and x86-64-v2-AES on Proxmox VE > 8.x
 	</td>
 	</tr>
 
