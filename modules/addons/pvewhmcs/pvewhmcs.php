@@ -16,7 +16,7 @@ function pvewhmcs_config() {
 	$configarray = array(
 		"name" => "Proxmox VE for WHMCS",
 		"description" => "Proxmox Virtual Environment + WHMCS",
-		"version" => "1.2.1",
+		"version" => "1.2.2",
 		"author" => "The Network Crew Pty Ltd",
 		'language' => 'English'
 	);
@@ -24,7 +24,7 @@ function pvewhmcs_config() {
 }
 
 function pvewhmcs_version(){
-    return "1.2.1";
+    return "1.2.2";
 }
 
 function pvewhmcs_activate() {
@@ -59,6 +59,26 @@ function pvewhmcs_deactivate() {
 	return array('status'=>'info','description'=>'If you want to give an info message to a user
 		you can return it here');
 
+}
+
+function pvewhmcs_upgrade($vars) {
+	$currentlyInstalledVersion = $vars['version'];
+	// Required SQL changes
+    if (version_compare($currentlyInstalledVersion, '1.2.2', 'gt')) {
+        $schema = Capsule::schema();
+        // We're adding the column "start_id" to the "mod_pvewhmcs" table
+		if(!$schema->hasColumn('mod_pvewhmcs', 'start_id')) {
+			$schema->table('mod_pvewhmcs', function ($table) {
+				$table->integer('start_id')->default(1000)->after('vnc_secret');
+			});
+		}
+		// Now we're adding the column "vmid" to the "mod_pvewhmcs_vms" table
+		if(!$schema->hasColumn('mod_pvewhmcs_vms', 'vmid')) {
+			$schema->table('mod_pvewhmcs_vms', function ($table) {
+				$table->integer('vmid')->default(0)->after('id');
+			});
+		}
+    }
 }
 
 function pvewhmcs_output($vars) {
@@ -298,6 +318,12 @@ function pvewhmcs_output($vars) {
 	<input type="text" size="35" name="vnc_secret" id="vnc_secret" value="'.$config->vnc_secret.'"> Password of "vnc"@"pve" user. Mandatory for VNC proxying. See the <a href="https://github.com/The-Network-Crew/Proxmox-VE-for-WHMCS/wiki" target="_blank">Wiki</a> for more info.
 	</td>
 	</tr>
+	<tr>
+	<td class="fieldlabel">Starting VMID</td>
+	<td class="fieldarea">
+	<input type="text" size="35" name="start_id" id="start_id" value="'.$config->start_id.'"> The starting VMID for new VMs. Default is 1000.
+	</td>
+	</tr>
 	</table>
 	<div class="btn-container">
 	<input type="submit" class="btn btn-primary" value="Save Changes" name="save_config" id="save_config">
@@ -325,6 +351,7 @@ function save_config() {
 				$connectionManager->table('mod_pvewhmcs')->update(
 					[
 						'vnc_secret' => $_POST['vnc_secret'],
+						'start_id' => $_POST['start_id']
 					]
 				);
 			}

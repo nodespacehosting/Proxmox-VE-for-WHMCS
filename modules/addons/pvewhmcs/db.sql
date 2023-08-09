@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS `mod_pvewhmcs` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
   `config` varchar(255),
   `vnc_secret` varchar(255),
+  `start_id` int(10) unsigned,
   PRIMARY KEY (`id`)
 );
 INSERT INTO `mod_pvewhmcs` (`id`, `config`) VALUES	(1, NULL);
@@ -50,6 +51,7 @@ CREATE TABLE IF NOT EXISTS `mod_pvewhmcs_plans` (
 );
 CREATE TABLE IF NOT EXISTS `mod_pvewhmcs_vms` (
   `id` int(10) unsigned NOT NULL,
+  `vmid` int(10) unsigned NOT NULL,
   `user_id` int(10) unsigned NOT NULL,
   `vtype` varchar(255) NOT NULL,
   `ipaddress` varchar(255) NOT NULL,
