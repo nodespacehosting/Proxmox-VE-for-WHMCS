@@ -73,7 +73,7 @@ function pvewhmcs_CreateAccount($params) {
 	$ip = Capsule::select('select ipaddress,mask,gateway from mod_pvewhmcs_ip_addresses i INNER JOIN mod_pvewhmcs_ip_pools p on (i.pool_id=p.id and p.id=' . $params['configoption2'] . ') where  i.ipaddress not in(select ipaddress from mod_pvewhmcs_vms) limit 1')[0];
 
 	// Get the starting VMID from the config options
-	$vmid = Capsule::table('mod_pvewhmcs')->where('id', '=', '1')->pluck('start_id');
+	//$vmid = Capsule::table('mod_pvewhmcs')->where('id', '=', '1')->pluck('start_id');
 
     // CREATE IF QEMU/KVM
 	if (!empty($params['customfields']['KVMTemplate'])) {
@@ -85,15 +85,8 @@ function pvewhmcs_CreateAccount($params) {
 			$nodes = $proxmox->get_node_list();
 			$first_node = $nodes[0];
 			unset($nodes);
-			// Find the next available VMID by checking if the VMID exists for either qemu or lxc
-			while (!is_null($proxmox->get('/nodes/' . $first_node . '/qemu/' . $vmid . '/status/current')) || !is_null($proxmox->get('/nodes/' . $first_node . '/lxc/' . $vmid . '/status/current'))) {
-				$vmid++;
-			}
-
-			// Make sure the VMID is an integer
-			$vmid = (int)$vmid;
-
-			$vm_settings['newid'] = $vmid;
+			//TODO: Use our starting VMID and then find the next available one.
+			$vm_settings['newid'] = $proxmox->get_next_vmid();
 			$vm_settings['name'] = "vps" . $params["serviceid"] . "-cus" . $params['clientsdetails']['userid'];
 			$vm_settings['full'] = true;
 			// DEBUG - Log the request parameters before it's fired
@@ -109,6 +102,7 @@ function pvewhmcs_CreateAccount($params) {
 					[
 						'id' => $params['serviceid'],
 						'user_id' => $params['clientsdetails']['userid'],
+						'vmid' => $vm_settings['newid'],
 						'vtype' => 'qemu',
 						'ipaddress' => $ip->ipaddress,
 						'subnetmask' => $ip->mask,
@@ -132,7 +126,7 @@ function pvewhmcs_CreateAccount($params) {
 		}
         // CREATE IF LXC/CONTAINER
 	} else {
-		//$vm_settings['vmid'] = $vmid;
+		//$vm_settings['vmid'] = $proxmox->get_next_vmid();
 		if ($plan->vmtype == 'lxc') {
 			$vm_settings['ostemplate'] = 'local:vztmpl/' . $params['customfields']['Template'];
 			$vm_settings['swap'] = $plan->swap;
@@ -195,12 +189,7 @@ function pvewhmcs_CreateAccount($params) {
 				}
 
 				// Find the next available VMID
-				while (!is_null($proxmox->get('/nodes/' . $first_node . '/qemu/' . $vmid . '/status/current')) || !is_null($proxmox->get('/nodes/' . $first_node . '/lxc/' . $vmid . '/status/current'))) {
-					$vmid++;
-				}
-
-				// Make sure the VMID is an integer
-				$vmid = (int)$vmid;
+				$vmid = $proxmox->get_next_vmid();
 
 				// Set the VMID
 				$vm_settings['vmid'] = $vmid;
@@ -219,6 +208,7 @@ function pvewhmcs_CreateAccount($params) {
 						[
 							'id' => $params['serviceid'],
 							'user_id' => $params['clientsdetails']['userid'],
+							'vmid' => $vmid,
 							'vtype' => $v,
 							'ipaddress' => $ip->ipaddress,
 							'subnetmask' => $ip->mask,
@@ -555,8 +545,7 @@ function pvewhmcs_AdminCustomButtonArray() {
 
 function pvewhmcs_ClientAreaCustomButtonArray() {
 	$buttonarray = array(
-		"<img src='./modules/servers/pvewhmcs/img/novnc.png'/> noVNC (HTML5)" => "noVNC",
-		"<img src='./modules/servers/pvewhmcs/img/tigervnc.png'/> TigerVNC (Java)" => "javaVNC",
+		"<i class='fa fa-2x fa-solid fa-terminal'></i> Console" => "noVNC",
 		"<i class='fa fa-2x fa-flag-checkered'></i> Start Machine" => "vmStart",
 		"<i class='fa fa-2x fa-sync'></i> Reboot Now" => "vmReboot",
 		"<i class='fa fa-2x fa-power-off'></i> Power Off" => "vmShutdown",
@@ -747,8 +736,10 @@ function pvewhmcs_vmStat($params) {
 
 function pvewhmcs_noVNC($params) {
 	$serverip = $params["serverip"];
-	$serverusername = 'vnc';
-	$serverpassword = Capsule::table('mod_pvewhmcs')->where('id', '1')->value('vnc_secret');
+	//$serverusername = 'vnc';
+	//$serverpassword = Capsule::table('mod_pvewhmcs')->where('id', '1')->value('vnc_secret');
+	$serverusername = $params["serverusername"];
+	$serverpassword = $params["serverpassword"];
 	$proxmox=new PVE2_API($serverip, $serverusername, "pve", $serverpassword);
 	if ($proxmox->login()) {
 		# Get first node name.
@@ -833,8 +824,15 @@ function pvewhmcs_vmStart($params) {
 		$pve_cmdparam = array();
 		// $pve_cmdparam['timeout'] = '60';
 
-		if ($proxmox->post('/nodes/' . $first_node . '/' . $guest->vtype . '/' . $guest->vmid . '/status/start' , $pve_cmdparam))
-			return "success" ;
+		// Check if VM is already running - I'm sure there's a better way to do this.
+		$vm_status = $proxmox->get('/nodes/' . $first_node . '/' . $guest->vtype . '/' . $guest->vmid . '/status/current');
+		if ($vm_status['status'] == 'running') {
+			return "success";
+		}elseif ($vm_status['status'] == 'stopped') {
+			if ($proxmox->post('/nodes/' . $first_node . '/' . $guest->vtype . '/' . $guest->vmid . '/status/start' , $pve_cmdparam))
+				return "success" ;
+		}
+
 	}
 	$response_message = json_encode($proxmox['data']['errors']);
 	return "Error performing action. " . $response_message;
