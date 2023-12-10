@@ -1,15 +1,46 @@
 # Changelog
 All notable changes to Proxmox VE for WHMCS will be documented in this file.
 
-## [1.2.2b] - Not yet released
+## [1.2.3] - TBC 2023-12-xx
 
 ### 🚀 Feature
-- Power Actions now available in Admin Area as well as Client Area
+- x86-64-ABI: Add options; Emulation default now `x86-64-v2-AES` (#58)
+- Intel/AMD: Add new CPU Emulation options (8~ Intel, 2x EPYC) (#58)
+- Templated VMs: Post-creation, will now amend to Plan (#32)
+
+### 💅 Polish
+- Debug Logs: Improved quality & scope of logged info (#59)
+- SECURITY.md: Add file to repository, clarifying process (#61)
+- README.md: Add VM/CT creation explanations from old manual (#57)
+- Logo: Per request from Proxmox Server Solutions, we got a logo (#56)
+- SPICE: Ground-work for future potential addition of 2nd HTML5 VNC
+
+### 🐛 Bug Fix
+- PHP v8.1: Verified no problems operating on v8 old-stable ver.
+- Connection Test: Fixed, so it reports OK/Green or an error (#29)
+- Admin, Edit Service: Should now populate existing config OK (#36)
+
+## [1.2.2] - 2023-09-15
+
+### 🚀 Feature
+- Debugging Mode: Allow admin to turn on/off Module Log feed (#38)*
+- VLAN ID: Set the required Virtual LAN ID against VM/CT Plan (#35)*
+- Version: Report in-use & latest versions in Health; ver alert (#21)
+- Power Actions: Now available in Admin Area as well as Client Area
 - (Note: Suspend/Unsuspend/Terminate remain admin-only functions)
 
 ### 💅 Polish
+- Suspend/Unsuspend: Functions changed to Stop/Start (fixes #34)
 - Client Area: Power Action wording amended (Soft Stop, Hard Stop)
 - Admin, Module Config: Explain what the VNC Secret field is about
+- Admin, Module Config: House-keeping to design, Support/Health tab
+
+### 🐛 Bug Fix
+- Admin, Create Service: Fails if Plan/Pool not assigned in WHMCS (#36)
+- Client, VNC: Fails early if VNC Secret is not set or adequate (#27)
+- On-boot Status: Enabled/Disabled now properly applied for CTs (#34)
+
+(\*): SQL Note: There are new columns in 2 of the module tables, see [SQL.md](https://github.com/The-Network-Crew/Proxmox-VE-for-WHMCS/blob/master/SQL.md)
 
 ## [1.2.1b] - 2023-06-19
 
@@ -85,6 +116,8 @@ All notable changes to Proxmox VE for WHMCS will be documented in this file.
 - Catch exception in Client Area if can't reach Proxmox
 
 ## [1.0] - 2017-01-26
+
+Thank you @cybercoder for open-sourcing your code! 
 
 ### 🚀 Feature
 - Open-sourced the previously commercial plugin

@@ -8,14 +8,25 @@
  *  - 2023-08-06: Fixed languages and added Proxmox VE 8 CPU options
 */
 
+// FILE: /modules/addons/pvewhmcs/pvewhmcs.php
+// TASK: Handles the Admin and Client Area GUIs etc
+// NEED: The PHP API Class to interact w/ Proxmox VE API
+// REPO: GitHub.com/The-Network-Crew/Proxmox-VE-for-WHMCS
+
+// Pull in the WHMCS database handler Capsule for SQL
 use Illuminate\Database\Capsule\Manager as Capsule;
+
+// Define where the module operates in the Admin GUI
 define( 'pvewhmcs_BASEURL', 'addonmodules.php?module=pvewhmcs' );
+
+// Require the PHP API Class to interact with Proxmox VE
 require_once('proxmox.php');
 
+// CONFIG: Declare key options to the WHMCS Addon Module framework.
 function pvewhmcs_config() {
 	$configarray = array(
 		"name" => "Proxmox VE for WHMCS",
-		"description" => "Proxmox Virtual Environment + WHMCS",
+		"description" => "Proxmox VE (Virtual Environment) & WHMCS, integrated & open-source! Provisioning & Management of VMs/CTs.".is_pvewhmcs_outdated(),
 		"version" => "1.2.2",
 		"author" => "The Network Crew Pty Ltd",
 		'language' => 'English'
@@ -23,69 +34,76 @@ function pvewhmcs_config() {
 	return $configarray;
 }
 
+// VERSION: also stored in repo/version (for update-available checker)
 function pvewhmcs_version(){
     return "1.2.2";
 }
 
+// WHMCS MODULE: ACTIVATION of the ADDON MODULE
+// This consists of importing the SQL structure, and then crudely returning yay or nay (needs improving)
 function pvewhmcs_activate() {
-
+	// Pull in the SQL structure (includes VNC/etc tweaks)
 	$sql = file_get_contents(ROOTDIR.'/modules/addons/pvewhmcs/db.sql');
 	if (!$sql) {
 		return array('status'=>'error','description'=>'The db.sql file not found.');
 	}
+	// SQL file is good, let's proceed with pulling it in
 	$err=false;
 	$i=0;
 	$query_array=explode(';',$sql) ;
 	$query_count=count($query_array) ;
+	// Iterate through the SQL commands to finalise init.
 	foreach ( $query_array as $query) {
 		if ($i<$query_count-1)
 			if (!Capsule::statement($query.';'))
 		$err=true;
 		$i++ ;
 	}
+	// Return success or error.
 	if (!$err)
-		return array('status'=>'success','description'=>'PVE for WHMCS installed successfully.');
+		return array('status'=>'success','description'=>'Proxmox VE for WHMCS was installed successfuly.');
 
-	return array('status'=>'error','description'=>'PVE for WHMCS was not activated properly.');
+	return array('status'=>'error','description'=>'Proxmox VE for WHMCS was not activated properly.');
 
 }
 
+// WHMCS MODULE: DEACTIVATION
 function pvewhmcs_deactivate() {
+	// Drop all module-related tables
 	Capsule::statement('drop table mod_pvewhmcs_ip_addresses,mod_pvewhmcs_ip_pools,mod_pvewhmcs_plans,mod_pvewhmcs_vms,mod_pvewhmcs');
-		# Return Result
-	return array('status'=>'success','description'=>'PVE for WHMCS successfully deactivated and all related tables deleted.');
-	return array('status'=>'error','description'=>'If an error occurs you can return an error
-		message for display here');
-	return array('status'=>'info','description'=>'If you want to give an info message to a user
-		you can return it here');
-
+	// Return the assumed result (change?)
+	return array('status'=>'success','description'=>'Proxmox VE for WHMCS successfuly deactivated and all related tables deleted.');
 }
 
-function pvewhmcs_upgrade($vars) {
-	$currentlyInstalledVersion = $vars['version'];
-	// Required SQL changes
-    if (version_compare($currentlyInstalledVersion, '1.2.2', 'gt')) {
-        $schema = Capsule::schema();
-        // We're adding the column "start_id" to the "mod_pvewhmcs" table
-		if(!$schema->hasColumn('mod_pvewhmcs', 'start_id')) {
-			$schema->table('mod_pvewhmcs', function ($table) {
-				$table->integer('start_id')->default(1000)->after('vnc_secret');
-			});
-		}
-		// Now we're adding the column "vmid" to the "mod_pvewhmcs_vms" table
-		if(!$schema->hasColumn('mod_pvewhmcs_vms', 'vmid')) {
-			$schema->table('mod_pvewhmcs_vms', function ($table) {
-				$table->integer('vmid')->default(0)->after('id');
-			});
-		}
+// UPDATE CHECKER: live vs repo
+function is_pvewhmcs_outdated(){
+    if(get_pvewhmcs_latest_version() > pvewhmcs_version()){
+        return "<br><span style='float:right;'><b>Proxmox VE for WHMCS is outdated: <a style='color:red' href='https://github.com/The-Network-Crew/Proxmox-VE-for-WHMCS/releases'>Download the new version!</a></span>";
     }
 }
 
-function pvewhmcs_output($vars) {
+// UPDATE CHECKER: return latest ver
+function get_pvewhmcs_latest_version(){
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, "https://raw.githubusercontent.com/The-Network-Crew/Proxmox-VE-for-WHMCS/master/version");
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    $result = curl_exec($ch);
+    curl_close ($ch);
 
+    return str_replace("\n", "", $result);
+}
+
+// ADMIN MODULE GUI: output (HTML etc)
+function pvewhmcs_output($vars) {
 	$modulelink = $vars['modulelink'];
 
-		// Messages
+	// Check for update and report if available
+	if (!empty(is_pvewhmcs_outdated())) {
+		$_SESSION['pvewhmcs']['infomsg']['title']='Proxmox VE for WHMCS: New version available!' ;
+		$_SESSION['pvewhmcs']['infomsg']['message']='Please visit the GitHub repository > Releases page. https://github.com/The-Network-Crew/Proxmox-VE-for-WHMCS/releases' ;
+	}
+		
+	// Print Messages to GUI before anything else
 	if (isset($_SESSION['pvewhmcs']['infomsg'])) {
 		echo '
 		<div class="infobox">
@@ -103,8 +121,10 @@ function pvewhmcs_output($vars) {
 	<ul class="nav nav-tabs admin-tabs">
 	<li class="'.($_GET['tab']=="vmplans" ? "active" : "").'"><a id="tabLink1" data-toggle="tab" role="tab" href="#plans">VM Plans</a></li>
 	<li class="'.($_GET['tab']=="ippools" ? "active" : "").'"><a id="tabLink2" data-toggle="tab" role="tab" href="#ippools">IP Pools</a></li>
-	<li class="'.($_GET['tab']=="health" ? "active" : "").'"><a id="tabLink3" data-toggle="tab" role="tab" href="#health">Support / Health</a></li>
-	<li class="'.($_GET['tab']=="config" ? "active" : "").'"><a id="tabLink4" data-toggle="tab" role="tab" href="#config">Module Config</a></li>
+	<li class="'.($_GET['tab']=="nodes" ? "active" : "").'"><a id="tabLink3" data-toggle="tab" role="tab" href="#nodes">Nodes / Cluster</a></li>
+	<li class="'.($_GET['tab']=="actions" ? "active" : "").'"><a id="tabLink4" data-toggle="tab" role="tab" href="#actions">Actions / Logs</a></li>
+	<li class="'.($_GET['tab']=="health" ? "active" : "").'"><a id="tabLink5" data-toggle="tab" role="tab" href="#health">Support / Health</a></li>
+	<li class="'.($_GET['tab']=="config" ? "active" : "").'"><a id="tabLink6" data-toggle="tab" role="tab" href="#config">Module Config</a></li>
 	</ul>
 	</div>
 	<div class="tab-content admin-tabs">
@@ -132,15 +152,15 @@ function pvewhmcs_output($vars) {
 
 	echo '
 	<div id="plans" class="tab-pane '.($_GET['tab']=="vmplans" ? "active" : "").'">
-	<div class="btn-group btn-group-lg" role="group" aria-label="...">
+	<div class="btn-group" role="group" aria-label="...">
 	<a class="btn btn-default" href="'. pvewhmcs_BASEURL .'&amp;tab=vmplans&amp;action=planlist">
-	<i class="fa fa-list"></i>&nbsp; Plans List
+	<i class="fa fa-list"></i>&nbsp; List: VM Plans
 	</a>
 	<a class="btn btn-default" href="'. pvewhmcs_BASEURL .'&amp;tab=vmplans&amp;action=add_kvm_plan">
-	<i class="fa fa-plus-square"></i>&nbsp; Add new KVM plan
+	<i class="fa fa-plus-square"></i>&nbsp; Add: KVM Plan
 	</a>
 	<a class="btn btn-default" href="'. pvewhmcs_BASEURL .'&amp;tab=vmplans&amp;action=add_lxc_plan">
-	<i class="fa fa-plus-square"></i>&nbsp; Add new LXC plan
+	<i class="fa fa-plus-square"></i>&nbsp; Add: LXC Plan
 	</a>
 	</div>
 	';
@@ -216,6 +236,9 @@ function pvewhmcs_output($vars) {
 		NIC Model
 		</th>
 		<th>
+		VLAN ID
+		</th>
+		<th>
 		Rate
 		</th>
 		<th>
@@ -243,6 +266,7 @@ function pvewhmcs_output($vars) {
 			echo '<td>'.$vm->netmode . PHP_EOL .'</td>';
 			echo '<td>'.$vm->bridge.$vm->vmbr . PHP_EOL .'</td>';
 			echo '<td>'.$vm->netmodel . PHP_EOL .'</td>';
+			echo '<td>'.$vm->vlanid . PHP_EOL .'</td>';
 			echo '<td>'.$vm->netrate . PHP_EOL .'</td>';
 			echo '<td>'.$vm->bw . PHP_EOL .'</td>';
 			echo '<td>
@@ -266,10 +290,10 @@ function pvewhmcs_output($vars) {
 	<div id="ippools" class="tab-pane '.($_GET['tab']=="ippools" ? "active" : "").'" >
 	<div class="btn-group">
 	<a class="btn btn-default" href="'. pvewhmcs_BASEURL .'&amp;tab=ippools&amp;action=list_ip_pools">
-	<i class="fa fa-list"></i>&nbsp; List IP Pools
+	<i class="fa fa-list"></i>&nbsp; List: IP Pools
 	</a>
 	<a class="btn btn-default" href="'. pvewhmcs_BASEURL .'&amp;tab=ippools&amp;action=newip">
-	<i class="fa fa-plus"></i>&nbsp; Add IP to Pool
+	<i class="fa fa-plus"></i>&nbsp; Add: IP to Pool
 	</a>
 	</div>
 	';
@@ -297,13 +321,33 @@ function pvewhmcs_output($vars) {
 	echo'
 	</div>
 	';
-	// Health Tab
+	// NODES / CLUSTER tab in ADMIN GUI
+	echo '<div id="nodes" class="tab-pane '.($_GET['tab']=="nodes" ? "active" : "").'" >' ;
+	echo ('<strong><h2>PVE: /cluster/resources</h2></strong>');
+	echo ('Coming in v1.3.x');
+	echo ('<strong><h2>PVE: Cluster Action Viewer</h2></strong>');
+	echo ('Coming in v1.3.x');
+	echo ('<strong><h2>PVE: Failed Actions (emailed)</h2></strong>');
+	echo ('Coming in v1.3.x<br><br>');
+	echo ('<strong><a href=\'https://github.com/The-Network-Crew/Proxmox-VE-for-WHMCS/milestones\' target=\'_blank\'>View the milestones/versions on GitHub</a></strong>');
+	echo '</div>';
+	// ACTIONS / LOGS tab in ADMIN GUI
+	echo '<div id="actions" class="tab-pane '.($_GET['tab']=="actions" ? "active" : "").'" >' ;
+	echo ('<strong><h2>Module: Action History</h2></strong>');
+	echo ('Coming in v1.3.x');
+	echo ('<strong><h2>Module: Failed Actions</h2></strong>');
+	echo ('Coming in v1.3.x');
+	echo ('<strong><h2>WHMCS: Module Logging</h2></strong>');
+	echo ('<u><a href=\'/admin/index.php?rp=/admin/logs/module-log\'>Click here</a></u> (Module Config > Debug Mode = ON)<br><br>');
+	echo ('<strong><a href=\'https://github.com/The-Network-Crew/Proxmox-VE-for-WHMCS/milestones\' target=\'_blank\'>View the milestones/versions on GitHub</a></strong>');
+	echo '</div>';
+	// SUPPORT / HEALTH tab in ADMIN GUI
 	echo '<div id="health" class="tab-pane '.($_GET['tab']=="health" ? "active" : "").'" >' ;
-	echo ('<h2>System Environment:</h2>Proxmox VE for WHMCS v' . pvewhmcs_version() . ' on PHP v' . phpversion() . ' (' . $_SERVER['SERVER_SOFTWARE'] . ')<br><br>');
-	echo ('<h2>Technical Support:</h2>Please raise an <a href="https://github.com/The-Network-Crew/Proxmox-VE-for-WHMCS/issues/new" target="_blank"><u>Issue</u></a> on GitHub - include logs, steps to reproduce, etc.<br><br>');
-	echo ('<h2>Updates & Codebase:</h2><b>Proxmox for WHMCS is open-source and free to use & improve on!</b><br><a href="https://github.com/The-Network-Crew/Proxmox-VE-for-WHMCS/" target="_blank">https://github.com/The-Network-Crew/Proxmox-VE-for-WHMCS/</a><br><br>');
-	echo ('<h2>Product & Reviewing</h2><b>Your 5-star review on WHMCS Marketplace will help the module grow!</b><br><a href="https://marketplace.whmcs.com/product/6935-proxmox-ve-for-whmcs" target="_blank">https://marketplace.whmcs.com/product/6935-proxmox-ve-for-whmcs</a><br><br>');
-	
+	echo ('<strong><h2>System Environment</h2></strong><b>Proxmox VE for WHMCS</b> v' . pvewhmcs_version() . ' (GitHub reports latest as <b>v' . get_pvewhmcs_latest_version() . '</b>)' . '<br><b>PHP</b> v' . phpversion() . ' running on <b>' . $_SERVER['SERVER_SOFTWARE'] . '</b> Web Server (' . $_SERVER['SERVER_NAME'] . ')<br><br>');
+	echo ('<strong><h2>Updates & Codebase</h2></strong><b>Proxmox for WHMCS is open-source and free to use & improve on! ❤️</b><br>Repo: <a href="https://github.com/The-Network-Crew/Proxmox-VE-for-WHMCS/" target="_blank">https://github.com/The-Network-Crew/Proxmox-VE-for-WHMCS/</a><br><br>');
+	echo ('<strong><h2>Product & Reviewing</h2></strong><b style="color:darkgreen;">Your 5-star review on WHMCS Marketplace will help the module grow!</b><br>*****: <a href="https://marketplace.whmcs.com/product/6935-proxmox-ve-for-whmcs" target="_blank">https://marketplace.whmcs.com/product/6935-proxmox-ve-for-whmcs</a><br><br>');
+	echo ('<strong><h2>Issues: Common Causes</h2></strong>1. <b>WHMCS needs to have >100 Services, else it is an illegal Proxmox VMID.</b><br>2. Save your Package (Plan/Pool)! (configproducts.php?action=edit&id=...#tab=3)<br>3. Where possible, we pass-through the exact error to WHMCS Admin. Check it for info!<br><br>');
+	echo ('<strong><h2>Module Technical Support</h2></strong>Please raise an <a href="https://github.com/The-Network-Crew/Proxmox-VE-for-WHMCS/issues/new" target="_blank"><u>Issue</u></a> on GitHub - include logs, steps to reproduce, etc.<br>Help is not guaranteed (FOSS). We will need your assistance. <b>Thank you.</b><br><br>');
 	echo '</div>';
 
 	// Config Tab
@@ -324,6 +368,14 @@ function pvewhmcs_output($vars) {
 	<input type="text" size="35" name="start_id" id="start_id" value="'.$config->start_id.'"> The starting VMID for new VMs. Default is 1000.
 	</td>
 	</tr>
+	<tr>
+	<td class="fieldlabel">Debug Mode</td>
+	<td class="fieldarea">
+	<label class="checkbox-inline">
+	<input type="checkbox" name="debug_mode" value="1" '. ($config->debug_mode=="1" ? "checked" : "").'> Whether or not you want Debug Logging enabled (WHMCS Module Log for Debugging >> /admin/logs/module-log)
+	</label>
+	</td>
+	</tr>
 	</table>
 	<div class="btn-container">
 	<input type="submit" class="btn btn-primary" value="Save Changes" name="save_config" id="save_config">
@@ -341,7 +393,7 @@ function pvewhmcs_output($vars) {
 	}
 }
 
-/* commit module config to DB */
+// MODULE CONFIG: Commit changes to the database
 function save_config() {
 	try {
 		Capsule::connection()->transaction(
@@ -352,6 +404,7 @@ function save_config() {
 					[
 						'vnc_secret' => $_POST['vnc_secret'],
 						'start_id' => $_POST['start_id']
+						'debug_mode' => $_POST['debug_mode'],
 					]
 				);
 			}
@@ -364,7 +417,7 @@ function save_config() {
 	}
 }
 
-/* adding a KVM plan */
+// MODULE FORM: Add new KVM Plan
 function kvm_plan_add() {
 	echo '
 	<form method="post">
@@ -400,10 +453,14 @@ function kvm_plan_add() {
 	<select class="form-control select-inline" name="cpuemu">
 	<option value="host">(Host) Host</option>
 	<option value="kvm32">(QEMU) kvm32</option>
-	<option value="kvm64" selected="">(QEMU) kvm64</option>
+	<option value="kvm64">(QEMU) kvm64</option>
 	<option value="max">(QEMU) Max</option>
 	<option value="qemu32">(QEMU) qemu32</option>
 	<option value="qemu64">(QEMU) qemu64</option>
+	<option value="x86-64-v2">(x86-64 psABI) v2 (Nehalem/Opteron_G3 on)</option>
+	<option value="x86-64-v2-AES" selected="">(x86-64 psABI) v2-AES (Westmere/Opteron_G4 on)</option>
+	<option value="x86-64-v3">(x86-64 psABI) v3 (Broadwell/EPYC on)</option>
+	<option value="x86-64-v4">(x86-64 psABI) v4 (Skylake/EPYCv4 on)</option>
 	<option value="486">(Intel) 486</option>
 	<option value="Broadwell">(Intel) Broadwell</option>
 	<option value="Broadwell-IBRS">(Intel) Broadwell-IBRS</option>
@@ -411,7 +468,12 @@ function kvm_plan_add() {
 	<option value="Broadwell-noTSX-IBRS">(Intel) Broadwell-noTSX-IBRS</option>
 	<option value="Cascadelake-Server">(Intel) Cascadelake-Server</option>
 	<option value="Cascadelake-Server-noTSX">(Intel) Cascadelake-Server-noTSX</option>
+	<option value="Cascadelake-Server-v2">(Intel) Cascadelake-Server-v2</option>
+	<option value="Cascadelake-Server-v4">(Intel) Cascadelake-Server-v4</option>
+	<option value="Cascadelake-Server-v5">(Intel) Cascadelake-Server-v5</option>
 	<option value="Conroe">(Intel) Conroe</option>
+	<option value="Cooperlake">(Intel) Cooperlake</option>
+	<option value="Cooperlake-v2">(Intel) Cooperlake-v2</option>
 	<option value="Haswell">(Intel) Haswell</option>
 	<option value="Haswell-IBRS">(Intel) Haswell-IBRS</option>
 	<option value="Haswell-noTSX">(Intel) Haswell-noTSX</option>
@@ -420,6 +482,10 @@ function kvm_plan_add() {
 	<option value="Icelake-Client-noTSX">(Intel) Icelake-Client-noTSX</option>
 	<option value="Icelake-Server">(Intel) Icelake-Server</option>
 	<option value="Icelake-Server-noTSX">(Intel) Icelake-Server-noTSX</option>
+	<option value="Icelake-Server-v3">(Intel) Icelake-Server-v3</option>
+	<option value="Icelake-Server-v4">(Intel) Icelake-Server-v4</option>
+	<option value="Icelake-Server-v5">(Intel) Icelake-Server-v5</option>
+	<option value="Icelake-Server-v6">(Intel) Icelake-Server-v6</option>
 	<option value="IvyBridge">(Intel) IvyBridge</option>
 	<option value="IvyBridge-IBRS">(Intel) IvyBridge-IBRS</option>
 	<option value="KnightsMill">(Intel) KnightsMill</option>
@@ -428,12 +494,16 @@ function kvm_plan_add() {
 	<option value="Penryn">(Intel) Penryn</option>
 	<option value="SandyBridge">(Intel) SandyBridge</option>
 	<option value="SandyBridge-IBRS">(Intel) SandyBridge-IBRS</option>
+	<option value="SapphireRapids">(Intel) SapphireRapids</option>
 	<option value="Skylake-Client">(Intel) Skylake-Client</option>
 	<option value="Skylake-Client-IBRS">(Intel) Skylake-Client-IBRS</option>
 	<option value="Skylake-Client-noTSX-IBRS">(Intel) Skylake-Client-noTSX-IBRS</option>
+	<option value="Skylake-Client-v4">(Intel) Skylake-Client-v4</option>
 	<option value="Skylake-Server">(Intel) Skylake-Server</option>
 	<option value="Skylake-Server-IBRS">(Intel) Skylake-Server-IBRS</option>
 	<option value="Skylake-Server-noTSX-IBRS">(Intel) Skylake-Server-noTSX-IBRS</option>
+	<option value="Skylake-Server-v4">(Intel) Skylake-Server-v4</option>
+	<option value="Skylake-Server-v5">(Intel) Skylake-Server-v5</option>
 	<option value="Westmere">(Intel) Westmere</option>
 	<option value="Westmere-IBRS">(Intel) Westmere-IBRS</option>
 	<option value="pentium">(Intel) Pentium I</option>
@@ -447,13 +517,15 @@ function kvm_plan_add() {
 	<option value="EPYC-IBPB">(AMD) EPYC-IBPB</option>
 	<option value="EPYC-Milan">(AMD) EPYC-Milan</option>
 	<option value="EPYC-Rome">(AMD) EPYC-Rome</option>
+	<option value="EPYC-Rome-v2">(AMD) EPYC-Rome-v2</option>
+	<option value="EPYC-v3">(AMD) EPYC-v3</option>
 	<option value="Opteron_G1">(AMD) Opteron_G1</option>
 	<option value="Opteron_G2">(AMD) Opteron_G2</option>
 	<option value="Opteron_G3">(AMD) Opteron_G3</option>
 	<option value="Opteron_G4">(AMD) Opteron_G4</option>
 	<option value="Opteron_G5">(AMD) Opteron_G5</option>
 	</select>
-	CPU emulation type. Default is KVM64
+	CPU emulation type. Default is x86-64 psABI v2-AES
 	</td>
 	</tr>
 
@@ -536,7 +608,7 @@ function kvm_plan_add() {
 	</td>
 	</tr>
 	<tr>
-	<td class="fieldlabel">PVE Storage - Name</td>
+	<td class="fieldlabel">PVE Store - Name</td>
 	<td class="fieldarea">
 	<input type="text" size="8" name="storage" id="storage" value="local" required>
 	Name of VM/CT Storage on Proxmox VE hypervisor. local/local-lvm/etc.
@@ -599,12 +671,19 @@ function kvm_plan_add() {
 	</td>
 	</tr>
 	<tr>
+	<td class="fieldlabel">Trunk - VLAN ID</td>
+	<td class="fieldarea">
+	<input type="text" size="8" name="vlanid" id="vlanid">
+	VLAN ID for Plan Services. Default forgoes tagging (VLAN ID), leave blank for untagged.
+	</td>
+	</tr>
+	<tr>
 	<td class="fieldlabel">
 	Hardware Virt?
 	</td>
 	<td class="fieldarea">
 	<label class="checkbox-inline">
-	<input type="checkbox" name="kvm" value="1" checked> Enable KVM hardware virtualisation. (Recommended)
+	<input type="checkbox" name="kvm" value="1" checked> Enable KVM hardware virtualisation. Requires support/enablement in BIOS. (Recommended)
 	</label>
 	</td>
 	</tr>
@@ -628,7 +707,7 @@ function kvm_plan_add() {
 	';
 }
 
-/* editing a KVM plan */
+// MODULE FORM: Edit a KVM Plan
 function kvm_plan_edit($id) {
 	$plan= Capsule::table('mod_pvewhmcs_plans')->where('id', '=', $id)->get()[0];
 	if (empty($plan)) {
@@ -676,10 +755,10 @@ function kvm_plan_edit($id) {
 	<option value="max" ' . ($plan->cpuemu == "max" ? "selected" : "") . '>(QEMU) Max</option>
 	<option value="qemu32" ' . ($plan->cpuemu == "qemu32" ? "selected" : "") . '>(QEMU) qemu32</option>
 	<option value="qemu64" ' . ($plan->cpuemu == "qemu64" ? "selected" : "") . '>(QEMU) qemu64</option>
-	<option value="x86-64-v2" ' . ($plan->cpuemu == "x86-64-v2" ? "selected" : "") . '>(QEMU) x86-64-v2</option>
-	<option value="x86-64-v2-AES" ' . ($plan->cpuemu == "x86-64-v2-AES" ? "selected" : "") . '>(QEMU) x86-64-v2-AES</option>
-	<option value="x86-64-v3" ' . ($plan->cpuemu == "x86-64-v3" ? "selected" : "") . '>(QEMU) x86-64-v3</option>
-	<option value="x86-64-v4" ' . ($plan->cpuemu == "x86-64-v4" ? "selected" : "") . '>(QEMU) x86-64-v4</option>
+	<option value="x86-64-v2" ' . ($plan->cpuemu == "x86-64-v2" ? "selected" : "") . '>(x86-64 psABI) v2 (Nehalem/Opteron_G3 on)</option>
+	<option value="x86-64-v2-AES" ' . ($plan->cpuemu == "x86-64-v2-AES" ? "selected" : "") . '>(x86-64 psABI) v2-AES (Westmere/Opteron_G4 on)</option>
+	<option value="x86-64-v3" ' . ($plan->cpuemu == "x86-64-v3" ? "selected" : "") . '>(x86-64 psABI) v3 (Broadwell/EPYC on)</option>
+	<option value="x86-64-v4" ' . ($plan->cpuemu == "x86-64-v4" ? "selected" : "") . '>(x86-64 psABI) v4 (Skylake/EPYCv4 on)</option>
 	<option value="486" ' . ($plan->cpuemu == "486" ? "selected" : "") . '>(Intel) 486</option>
 	<option value="Broadwell" ' . ($plan->cpuemu == "Broadwell" ? "selected" : "") . '>(Intel) Broadwell</option>
 	<option value="Broadwell-IBRS" ' . ($plan->cpuemu == "Broadwell-IBRS" ? "selected" : "") . '>(Intel) Broadwell-IBRS</option>
@@ -687,7 +766,12 @@ function kvm_plan_edit($id) {
 	<option value="Broadwell-noTSX-IBRS" ' . ($plan->cpuemu == "Broadwell-noTSX-IBRS" ? "selected" : "") . '>(Intel) Broadwell-noTSX-IBRS</option>
 	<option value="Cascadelake-Server" ' . ($plan->cpuemu == "Cascadelake-Server" ? "selected" : "") . '>(Intel) Cascadelake-Server</option>
 	<option value="Cascadelake-Server-noTSX" ' . ($plan->cpuemu == "Cascadelake-Server-noTSX" ? "selected" : "") . '>(Intel) Cascadelake-Server-noTSX</option>
+	<option value="Cascadelake-Server-v2" ' . ($plan->cpuemu == "Cascadelake-Server-v2" ? "selected" : "") . '>(Intel) Cascadelake-Server V2</option>
+	<option value="Cascadelake-Server-v4" ' . ($plan->cpuemu == "Cascadelake-Server-v4" ? "selected" : "") . '>(Intel) Cascadelake-Server V4</option>
+	<option value="Cascadelake-Server-v5" ' . ($plan->cpuemu == "Cascadelake-Server-v5" ? "selected" : "") . '>(Intel) Cascadelake-Server V5</option>
 	<option value="Conroe" ' . ($plan->cpuemu == "Conroe" ? "selected" : "") . '>(Intel) Conroe</option>
+	<option value="Cooperlake" ' . ($plan->cpuemu == "Cooperlake" ? "selected" : "") . '>(Intel) Cooperlake</option>
+	<option value="Cooperlake-v2" ' . ($plan->cpuemu == "Cooperlake-v2" ? "selected" : "") . '>(Intel) Cooperlake V2</option>
 	<option value="Haswell" ' . ($plan->cpuemu == "Haswell" ? "selected" : "") . '>(Intel) Haswell</option>
 	<option value="Haswell-IBRS" ' . ($plan->cpuemu == "Haswell-IBRS" ? "selected" : "") . '>(Intel) Haswell-IBRS</option>
 	<option value="Haswell-noTSX" ' . ($plan->cpuemu == "Haswell-noTSX" ? "selected" : "") . '>(Intel) Haswell-noTSX</option>
@@ -696,6 +780,10 @@ function kvm_plan_edit($id) {
 	<option value="Icelake-Client-noTSX" ' . ($plan->cpuemu == "Icelake-Client-noTSX" ? "selected" : "") . '>(Intel) Icelake-Client-noTSX</option>
 	<option value="Icelake-Server" ' . ($plan->cpuemu == "Icelake-Server" ? "selected" : "") . '>(Intel) Icelake-Server</option>
 	<option value="Icelake-Server-noTSX" ' . ($plan->cpuemu == "Icelake-Server-noTSX" ? "selected" : "") . '>(Intel) Icelake-Server-noTSX</option>
+	<option value="Icelake-Server-v3" ' . ($plan->cpuemu == "Icelake-Server-v3" ? "selected" : "") . '>(Intel) Icelake-Server V3</option>
+	<option value="Icelake-Server-v4" ' . ($plan->cpuemu == "Icelake-Server-v4" ? "selected" : "") . '>(Intel) Icelake-Server V4</option>
+	<option value="Icelake-Server-v5" ' . ($plan->cpuemu == "Icelake-Server-v5" ? "selected" : "") . '>(Intel) Icelake-Server V5</option>
+	<option value="Icelake-Server-v6" ' . ($plan->cpuemu == "Icelake-Server-v6" ? "selected" : "") . '>(Intel) Icelake-Server V6</option>
 	<option value="IvyBridge" ' . ($plan->cpuemu == "IvyBridge" ? "selected" : "") . '>(Intel) IvyBridge</option>
 	<option value="IvyBridge-IBRS" ' . ($plan->cpuemu == "IvyBridge-IBRS" ? "selected" : "") . '>(Intel) IvyBridge-IBRS</option>
 	<option value="KnightsMill" ' . ($plan->cpuemu == "KnightsMill" ? "selected" : "") . '>(Intel) KnightsMill</option>
@@ -704,12 +792,16 @@ function kvm_plan_edit($id) {
 	<option value="Penryn" ' . ($plan->cpuemu == "Penryn" ? "selected" : "") . '>(Intel) Penryn</option>
 	<option value="SandyBridge" ' . ($plan->cpuemu == "SandyBridge" ? "selected" : "") . '>(Intel) SandyBridge</option>
 	<option value="SandyBridge-IBRS" ' . ($plan->cpuemu == "SandyBridge-IBRS" ? "selected" : "") . '>(Intel) SandyBridge-IBRS</option>
+	<option value="SapphireRapids" ' . ($plan->cpuemu == "SapphireRapids" ? "selected" : "") . '>(Intel) Sapphire Rapids</option>
 	<option value="Skylake-Client" ' . ($plan->cpuemu == "Skylake-Client" ? "selected" : "") . '>(Intel) Skylake-Client</option>
 	<option value="Skylake-Client-IBRS" ' . ($plan->cpuemu == "Skylake-Client-IBRS" ? "selected" : "") . '>(Intel) Skylake-Client-IBRS</option>
 	<option value="Skylake-Client-noTSX-IBRS" ' . ($plan->cpuemu == "Skylake-Client-noTSX-IBRS" ? "selected" : "") . '>(Intel) Skylake-Client-noTSX-IBRS</option>
+	<option value="Skylake-Client-v4" ' . ($plan->cpuemu == "Skylake-Client-v4" ? "selected" : "") . '>(Intel) Skylake-Client V4</option>
 	<option value="Skylake-Server" ' . ($plan->cpuemu == "Skylake-Server" ? "selected" : "") . '>(Intel) Skylake-Server</option>
 	<option value="Skylake-Server-IBRS" ' . ($plan->cpuemu == "Skylake-Server-IBRS" ? "selected" : "") . '>(Intel) Skylake-Server-IBRS</option>
 	<option value="Skylake-Server-noTSX-IBRS" ' . ($plan->cpuemu == "Skylake-Server-noTSX-IBRS" ? "selected" : "") . '>(Intel) Skylake-Server-noTSX-IBRS</option>
+	<option value="Skylake-Server-v4" ' . ($plan->cpuemu == "Skylake-Server-v4" ? "selected" : "") . '>(Intel) Skylake-Server V4</option>
+	<option value="Skylake-Server-v5" ' . ($plan->cpuemu == "Skylake-Server-v5" ? "selected" : "") . '>(Intel) Skylake-Server V5</option>
 	<option value="Westmere" ' . ($plan->cpuemu == "Westmere" ? "selected" : "") . '>(Intel) Westmere</option>
 	<option value="Westmere-IBRS" ' . ($plan->cpuemu == "Westmere-IBRS" ? "selected" : "") . '>(Intel) Westmere-IBRS</option>
 	<option value="pentium" ' . ($plan->cpuemu == "pentium" ? "selected" : "") . '>(Intel) Pentium I</option>
@@ -723,6 +815,8 @@ function kvm_plan_edit($id) {
 	<option value="EPYC-IBPB" ' . ($plan->cpuemu == "EPYC-IBPB" ? "selected" : "") . '>(AMD) EPYC-IBPB</option>
 	<option value="EPYC-Milan" ' . ($plan->cpuemu == "EPYC-Milan" ? "selected" : "") . '>(AMD) EPYC-Milan</option>
 	<option value="EPYC-Rome" ' . ($plan->cpuemu == "EPYC-Rome" ? "selected" : "") . '>(AMD) EPYC-Rome</option>
+	<option value="EPYC-Rome-v2" ' . ($plan->cpuemu == "EPYC-Rome-v2" ? "selected" : "") . '>(AMD) EPYC-Rome-v2</option>
+	<option value="EPYC-v3" ' . ($plan->cpuemu == "EPYC-v3" ? "selected" : "") . '>(AMD) EPYC-v3</option>
 	<option value="Opteron_G1" ' . ($plan->cpuemu == "Opteron_G1" ? "selected" : "") . '>(AMD) Opteron_G1</option>
 	<option value="Opteron_G2" ' . ($plan->cpuemu == "Opteron_G2" ? "selected" : "") . '>(AMD) Opteron_G2</option>
 	<option value="Opteron_G3" ' . ($plan->cpuemu == "Opteron_G3" ? "selected" : "") . '>(AMD) Opteron_G3</option>
@@ -758,7 +852,7 @@ function kvm_plan_edit($id) {
 	<td class="fieldlabel">CPU - Weighting</td>
 	<td class="fieldarea">
 	<input type="text" size="8" name="cpuunits" id="cpuunits" value="'.$plan->cpuunits.'" required>
-	Number is relative to weights of all the other running VMs. 8 - 500000 recommended 1024. NOTE: You can disable fair-scheduler configuration by setting this to 0.
+	Number is relative to weights of all the other running VMs. 8 - 500000 recommended 1024. NOTE: You can disable fair-scheduler by setting this to 0.
 	</td>
 	</tr>
 	<tr>
@@ -812,7 +906,7 @@ function kvm_plan_edit($id) {
 	</td>
 	</tr>
 	<tr>
-	<td class="fieldlabel">PVE Storage - Name</td>
+	<td class="fieldlabel">PVE Store - Name</td>
 	<td class="fieldarea">
 	<input type="text" size="8" name="storage" id="storage" required value="'.$plan->storage.'">
 	Name of VM/CT Storage on Proxmox VE hypervisor. local/local-lvm/etc.
@@ -840,14 +934,14 @@ function kvm_plan_edit($id) {
 	<td class="fieldlabel">Network - Rate</td>
 	<td class="fieldarea">
 	<input type="text" size="8" name="netrate" id="netrate" value="'.$plan->netrate.'">
-	Network Rate Limit in Megabit, Blank means unlimit.
+	Network Rate Limit in Megabit, Blank means unlimited.
 	</td>
 	</tr>
 	<tr>
 	<td class="fieldlabel">Network - BW Limit</td>
 	<td class="fieldarea">
 	<input type="text" size="8" name="bw" id="bw" value="'.$plan->bw.'">
-	Monthly Bandwidth Limit in GigaByte, Blank means unlimit.
+	Monthly Bandwidth Limit in Gigabyte, Blank means unlimited.
 	</td>
 	</tr>
 	<tr>
@@ -875,12 +969,19 @@ function kvm_plan_edit($id) {
 	</td>
 	</tr>
 	<tr>
+	<td class="fieldlabel">Trunk - VLAN ID</td>
+	<td class="fieldarea">
+	<input type="text" size="8" name="vlanid" id="vlanid">
+	VLAN ID for Plan Services. Default forgoes tagging (VLAN ID), leave blank for untagged.
+	</td>
+	</tr>
+	<tr>
 	<td class="fieldlabel">
 	Hardware Virt?
 	</td>
 	<td class="fieldarea">
 	<label class="checkbox-inline">
-	<input type="checkbox" name="kvm" value="1" '. ($plan->kvm=="1" ? "checked" : "").'> Enable KVM hardware virtualisation. (Recommended)
+	<input type="checkbox" name="kvm" value="1" '. ($plan->kvm=="1" ? "checked" : "").'> Enable KVM hardware virtualisation. Requires support/enablement in BIOS. (Recommended)
 	</label>
 	</td>
 	</tr>
@@ -904,8 +1005,7 @@ function kvm_plan_edit($id) {
 	';
 }
 
-
-/* adding an LXC plan */
+// MODULE FORM: Add an LXC Plan
 function lxc_plan_add() {
 	echo '
 	<form method="post">
@@ -948,11 +1048,11 @@ function lxc_plan_add() {
 	<td class="fieldlabel">SSD/HDD - Disk</td>
 	<td class="fieldarea">
 	<input type="text" size="8" name="disk" id="disk" required>
-	Disk space in Gigabayte e.g 1024 = 1TB
+	Disk space in Gigabytes e.g 1024 = 1TB
 	</td>
 	</tr>
 	<tr>
-	<td class="fieldlabel">PVE Storage - Name</td>
+	<td class="fieldlabel">PVE Store - Name</td>
 	<td class="fieldarea">
 	<input type="text" size="8" name="storage" id="storage" value="local" required>
 	Name of VM/CT Storage on Proxmox VE hypervisor. local/local-lvm/etc.
@@ -977,6 +1077,13 @@ function lxc_plan_add() {
 	<td class="fieldarea">
 	<input type="text" size="8" name="vmbr" id="vmbr" value="0">
 	Bridge interface number. Proxmox default bridge (vmbr) number is 0, it means "vmbr0".
+	</td>
+	</tr>
+	<tr>
+	<td class="fieldlabel">Trunk - VLAN ID</td>
+	<td class="fieldarea">
+	<input type="text" size="8" name="vlanid" id="vlanid">
+	VLAN ID for Plan Services. Default forgoes tagging (VLAN ID), leave blank for untagged.
 	</td>
 	</tr>
 	<tr>
@@ -1013,7 +1120,7 @@ function lxc_plan_add() {
 	';
 }
 
-/* editing an LXC plan */
+// MODULE FORM: Edit an LXC Plan
 function lxc_plan_edit($id) {
 	$plan= Capsule::table('mod_pvewhmcs_plans')->where('id', '=', $id)->get()[0];
 	if (empty($plan)) {
@@ -1069,7 +1176,7 @@ function lxc_plan_edit($id) {
 	</td>
 	</tr>
 	<tr>
-	<td class="fieldlabel">PVE Storage - Name</td>
+	<td class="fieldlabel">PVE Store - Name</td>
 	<td class="fieldarea">
 	<input type="text" size="8" name="storage" id="storage" value="'.$plan->storage.'" required>
 	Name of VM/CT Storage on Proxmox VE hypervisor. local/local-lvm/etc.
@@ -1094,6 +1201,13 @@ function lxc_plan_edit($id) {
 	<td class="fieldarea">
 	<input type="text" size="8" name="vmbr" id="vmbr" value="'.$plan->vmbr.'">
 	Bridge interface number. Proxmox default bridge (vmbr) number is 0, It means "vmbr0".
+	</td>
+	</tr>
+	<tr>
+	<td class="fieldlabel">Trunk - VLAN ID</td>
+	<td class="fieldarea">
+	<input type="text" size="8" name="vlanid" id="vlanid">
+	VLAN ID for Plan Services. Default forgoes tagging (VLAN ID), leave blank for untagged.
 	</td>
 	</tr>
 	<tr>
@@ -1130,6 +1244,7 @@ function lxc_plan_edit($id) {
 	';
 }
 
+// MODULE FORM ACTION: Save KVM Plan
 function save_kvm_plan() {
 	try {
 		Capsule::connection()->transaction(
@@ -1157,6 +1272,7 @@ function save_kvm_plan() {
 						'bridge' => $_POST['bridge'],
 						'vmbr' => $_POST['vmbr'],
 						'netmodel' => $_POST['netmodel'],
+						'vlanid' => $_POST['vlanid'],
 						'netrate' => $_POST['netrate'],
 						'bw' => $_POST['bw'],
 						'kvm' => $_POST['kvm'],
@@ -1173,6 +1289,7 @@ function save_kvm_plan() {
 	}
 }
 
+// MODULE FORM ACTION: Update KVM Plan
 function update_kvm_plan() {
 	Capsule::table('mod_pvewhmcs_plans')
 	->where('id', $_GET['id'])
@@ -1197,6 +1314,7 @@ function update_kvm_plan() {
 			'bridge' => $_POST['bridge'],
 			'vmbr' => $_POST['vmbr'],
 			'netmodel' => $_POST['netmodel'],
+			'vlanid' => $_POST['vlanid'],
 			'netrate' => $_POST['netrate'],
 			'bw' => $_POST['bw'],
 			'kvm' => $_POST['kvm'],
@@ -1208,13 +1326,15 @@ function update_kvm_plan() {
 	header("Location: ".pvewhmcs_BASEURL."&tab=vmplans&action=planlist");
 }
 
-
+// MODULE FORM ACTION: Remove Plan
 function remove_plan($id) {
 	Capsule::table('mod_pvewhmcs_plans')->where('id', '=', $id)->delete();
 	header("Location: ".pvewhmcs_BASEURL."&tab=vmplans&action=planlist");
 	$_SESSION['pvewhmcs']['infomsg']['title']='Plan Deleted.' ;
 	$_SESSION['pvewhmcs']['infomsg']['message']='Selected Item deleted successfuly.' ;
 }
+
+// MODULE FORM ACTION: Save LXC Plan
 function save_lxc_plan() {
 	try {
 		Capsule::connection()->transaction(
@@ -1236,6 +1356,7 @@ function save_lxc_plan() {
 						'bridge' => $_POST['bridge'],
 						'vmbr' => $_POST['vmbr'],
 						'netmodel' => $_POST['netmodel'],
+						'vlanid' => $_POST['vlanid'],
 						'netrate' => $_POST['netrate'],
 						'bw' => $_POST['bw'],
 						'onboot' => $_POST['onboot'],
@@ -1251,6 +1372,7 @@ function save_lxc_plan() {
 	}
 }
 
+// MODULE FORM ACTION: Update LXC Plan
 function update_lxc_plan() {
 	Capsule::table('mod_pvewhmcs_plans')
 	->where('id', $_GET['id'])
@@ -1269,6 +1391,7 @@ function update_lxc_plan() {
 			'bridge' => $_POST['bridge'],
 			'vmbr' => $_POST['vmbr'],
 			'netmodel' => $_POST['netmodel'],
+			'vlanid' => $_POST['vlanid'],
 			'netrate' => $_POST['netrate'],
 			'bw' => $_POST['bw'],
 			'onboot' => $_POST['onboot'],
@@ -1279,7 +1402,7 @@ function update_lxc_plan() {
 	header("Location: ".pvewhmcs_BASEURL."&tab=vmplans&action=planlist");
 }
 
-	// List IP pools in table
+// IP POOLS: List all Pools
 function list_ip_pools() {
 	echo '<a class="btn btn-default" href="'. pvewhmcs_BASEURL .'&amp;tab=ippools&amp;action=new_ip_pool"><i class="fa fa-plus-square"></i>&nbsp; New IP Pool</a>';
 	echo '<table class="datatable"><tr><th>ID</th><th>Pool</th><th>Gateway</th><th>Action</th></tr>';
@@ -1297,7 +1420,7 @@ function list_ip_pools() {
 	echo '</table>';
 }
 
-	//create new IP pool
+// IP POOL FORM: Add IP Pool
 function add_ip_pool() {
 	echo '
 	<form method="post">
@@ -1319,6 +1442,7 @@ function add_ip_pool() {
 	';
 }
 
+// IP POOL FORM ACTION: Save Pool
 function save_ip_pool() {
 	try {
 		Capsule::connection()->transaction(
@@ -1341,6 +1465,7 @@ function save_ip_pool() {
 	}
 }
 
+// IP POOL FORM ACTION: Remove Pool
 function removeIpPool($id) {
 	Capsule::table('mod_pvewhmcs_ip_addresses')->where('pool_id', '=', $id)->delete();
 	Capsule::table('mod_pvewhmcs_ip_pools')->where('id', '=', $id)->delete();
@@ -1350,7 +1475,7 @@ function removeIpPool($id) {
 	$_SESSION['pvewhmcs']['infomsg']['message']='Deleted the IP Pool successfully.' ;
 }
 
-	// add IP address/subnet to Pool
+// IP POOL FORM ACTION: Add IP to Pool
 function add_ip_2_pool() {
 	require_once(ROOTDIR.'/modules/addons/pvewhmcs/Ipv4/Subnet.php');
 	echo '<form method="post">
@@ -1410,7 +1535,7 @@ function add_ip_2_pool() {
 	}
 }
 
-	// List IP addresses in pool
+// IP POOL FORM: List IPs in Pool
 function list_ips() {
 		//echo '<script>$(function() {$( "#dialog" ).dialog();});</script>' ;
 		//echo '<div id="dialog">' ;
@@ -1427,7 +1552,7 @@ function list_ips() {
 
 }
 
-	// Remove IP Address
+// IP POOL FORM ACTION: Remove IP from Pool
 function removeip($id,$pool_id) {
 	Capsule::table('mod_pvewhmcs_ip_addresses')->where('id', '=', $id)->delete();
 	header("Location: ".pvewhmcs_BASEURL."&tab=ippools&action=list_ips&id=".$pool_id);

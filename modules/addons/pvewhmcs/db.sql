@@ -3,9 +3,10 @@ CREATE TABLE IF NOT EXISTS `mod_pvewhmcs` (
   `config` varchar(255),
   `vnc_secret` varchar(255),
   `start_id` int(10) unsigned,
+  `debug_mode` tinyint(1) unsigned DEFAULT '0',
   PRIMARY KEY (`id`)
 );
-INSERT INTO `mod_pvewhmcs` (`id`, `config`) VALUES	(1, NULL);
+INSERT INTO `mod_pvewhmcs` (`id`, `config`, `vnc_secret`) VALUES	(1, NULL, NULL);
 CREATE TABLE IF NOT EXISTS `mod_pvewhmcs_ip_addresses` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `pool_id` int(11) NOT NULL DEFAULT '0',
@@ -22,13 +23,13 @@ CREATE TABLE IF NOT EXISTS `mod_pvewhmcs_ip_pools` (
 );
 CREATE TABLE IF NOT EXISTS `mod_pvewhmcs_plans` (
   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `title` varchar(255) CHARACTER SET utf8 NOT NULL COMMENT 'Plan - Name',
-  `vmtype` varchar(8) NOT NULL COMMENT 'Guest Type - KVM or LXC',
-  `ostype` varchar(8) DEFAULT NULL COMMENT 'OS - Type',
+  `title` varchar(255) CHARACTER SET utf8 NOT NULL,
+  `vmtype` varchar(8) NOT NULL,
+  `ostype` varchar(8) DEFAULT NULL,
   `cpus` tinyint(2) unsigned DEFAULT NULL,
-  `cpuemu` varchar(30) CHARACTER SET utf8 DEFAULT NULL COMMENT 'Emulated CPU Type eg. coreduo | core2duo | kvm32 | kvm64 | qemu32 | qemu64 | phenom | host',
-  `cores` tinyint(2) unsigned DEFAULT NULL COMMENT 'Cores per Socket',
-  `cpulimit` smallint(5) unsigned DEFAULT NULL COMMENT 'Limit vs Host CPU (max)',
+  `cpuemu` varchar(30) CHARACTER SET utf8 DEFAULT NULL,
+  `cores` tinyint(2) unsigned DEFAULT NULL,
+  `cpulimit` smallint(5) unsigned DEFAULT NULL,
   `cpuunits` smallint(5) unsigned DEFAULT NULL,
   `memory` smallint(5) unsigned NOT NULL,
   `swap` smallint(5) unsigned DEFAULT NULL,
@@ -47,6 +48,7 @@ CREATE TABLE IF NOT EXISTS `mod_pvewhmcs_plans` (
   `bw` int(6) unsigned DEFAULT '0',
   `kvm` tinyint(1) unsigned DEFAULT '0',
   `onboot` tinyint(1) unsigned DEFAULT '0',
+  `vlanid` varchar(10) DEFAULT NULL,
   PRIMARY KEY (`id`)
 );
 CREATE TABLE IF NOT EXISTS `mod_pvewhmcs_vms` (
