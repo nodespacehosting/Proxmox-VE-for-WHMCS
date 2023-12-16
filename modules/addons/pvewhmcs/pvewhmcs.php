@@ -403,7 +403,7 @@ function save_config() {
 				$connectionManager->table('mod_pvewhmcs')->update(
 					[
 						'vnc_secret' => $_POST['vnc_secret'],
-						'start_id' => $_POST['start_id']
+						'start_id' => $_POST['start_id'],
 						'debug_mode' => $_POST['debug_mode'],
 					]
 				);
